@@ -32,7 +32,7 @@ type KokoroInternalRequest struct {
 
 // ElevenLabs API Key — apni key yahan lagao
 // Free account: https://elevenlabs.io (10,000 chars/month free)
-const ElevenLabsAPIKey = "sk_0f5e0044a10b3267a3ea97a89035e4a"
+var ElevenLabsAPIKey = "sk_f1a5bb6592afdafb40993bac1722595b3a33d2d67616e533"
 
 // Cloned voice IDs in-memory (bot number → ElevenLabs voice ID)
 var clonedVoices = make(map[string]string)

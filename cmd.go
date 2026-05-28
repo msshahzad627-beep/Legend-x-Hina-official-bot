@@ -617,7 +617,15 @@ func processMessageAsync(client *whatsmeow.Client, v *events.Message) {
 		react(client, v, "🔍")
 		go handleYTS(client, v, fullArgs)
 
-	case "tts":
+	case "tts", "speak", "voice":
+		react(client, v, "🎙️")
+		go handleAdvancedTTS(client, v, fullArgs)
+
+	case "gtts":
+		react(client, v, "🎙️")
+		go handleGoogleTTS(client, v, fullArgs)
+
+	case "ttsearch":
 		react(client, v, "🔍")
 		go handleTTSearch(client, v, fullArgs)
 
@@ -836,11 +844,7 @@ func processMessageAsync(client *whatsmeow.Client, v *events.Message) {
 		react(client, v, "🔘")
 		go handleSendButtons(client, v)
 		
-	case "speak", "voice", "kokoro":
-		react(client, v, "🎙️")
-		go handleAdvancedTTS(client, v, fullArgs)
-		
-		
+	
 	// 🔥 THE AI MASTERMINDS
 	case "ai", "gpt", "chatgpt", "gemini", "claude", "llama", "groq", "bot", "ask":
 	    react(client, v, "🧠")
@@ -1087,6 +1091,30 @@ func sendMainMenu(client *whatsmeow.Client, v *events.Message, settings BotSetti
 
  🌤️ *%[3]sweather* [city]
     ╰➤ _Check City Weather_
+
+┏━━━━━━━━━━━━━━━━━━━━━━━┓
+┃   🎙️ ᴠᴏɪᴄᴇ & ᴛᴛs     ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━┛
+ 🎙️ *%[3]stts* [text]
+    ╰➤ _AI Voice Note (English)_
+
+ 🎙️ *%[3]stts* am_adam|[text]
+    ╰➤ _Male Voice (Adam)_
+
+ 🎙️ *%[3]stts* af_bella|[text]
+    ╰➤ _Female Voice (Bella)_
+
+ 🎙️ *%[3]stts* am_michael|[text]
+    ╰➤ _Deep Male Voice (Michael)_
+
+ 🌍 *%[3]sgtts* [text]
+    ╰➤ _Google Voice (English)_
+
+ 🇵🇰 *%[3]sgtts* ur [text]
+    ╰➤ _Google Voice (Urdu)_
+
+ 🎵 *%[3]sgtts* hi [text]
+    ╰➤ _Google Voice (Hindi)_
 
 ┏━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃  ✨ ᴘᴏᴡᴇʀᴇᴅ ʙʏ ❤️    ┃

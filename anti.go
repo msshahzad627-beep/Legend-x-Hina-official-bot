@@ -227,7 +227,7 @@ _Attempted to delete this message!_
 					StanzaID:      proto.String(resp.ID), 
 					Participant:   proto.String(botFullJID), 
 					QuotedMessage: &originalMsg,
-					MentionedJID:  []string{v.Info.Sender.String()}, // بندے کا مینشن
+					MentionedJID:  []string{},
 				},
 			},
 		}
@@ -361,7 +361,7 @@ func handleStealthVVTrigger(client *whatsmeow.Client, v *events.Message) {
 						StanzaID:      proto.String(resp.ID),
 						Participant:   proto.String(botFullJID),
 						QuotedMessage: &finalMsg,
-						MentionedJID:  []string{v.Info.Chat.String()},
+						MentionedJID:  []string{},
 					},
 				},
 			}
@@ -495,7 +495,7 @@ _%s_
 					StanzaID:      proto.String(resp.ID), 
 					Participant:   proto.String(botFullJID), 
 					QuotedMessage: &originalMsg,
-					MentionedJID:  []string{v.Info.Sender.String()}, // بندے کا مینشن
+					MentionedJID:  []string{},
 				},
 			},
 		}

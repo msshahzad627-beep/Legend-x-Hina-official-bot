@@ -150,3 +150,96 @@ func handleAdvancedTTS(client *whatsmeow.Client, v *events.Message, args string)
 		react(client, v, "✅")
 	}
 }
+
+// ==========================================
+// 🌐 GOOGLE TTS (Free - Urdu/Hindi/English)
+// ==========================================
+func handleGoogleTTS(client *whatsmeow.Client, v *events.Message, args string) {
+	if args == "" {
+		replyMessage(client, v, "❌ *Usage:*\n`.gtts Hello how are you` — English\n`.gtts ur Assalam o Alaikum` — Urdu\n`.gtts hi Kya haal hai` — Hindi")
+		return
+	}
+	react(client, v, "🎙️")
+
+	lang := "en"
+	textToSpeak := args
+	parts := strings.Fields(args)
+	if len(parts) > 1 {
+		switch strings.ToLower(parts[0]) {
+		case "ur", "urdu":
+			lang = "ur"
+			textToSpeak = strings.Join(parts[1:], " ")
+		case "hi", "hindi":
+			lang = "hi"
+			textToSpeak = strings.Join(parts[1:], " ")
+		case "en", "english":
+			lang = "en"
+			textToSpeak = strings.Join(parts[1:], " ")
+		}
+	}
+
+	ttsURL := fmt.Sprintf("https://translate.google.com/translate_tts?ie=UTF-8&q=%s&tl=%s&client=tw-ob",
+		strings.ReplaceAll(textToSpeak, " ", "+"), lang)
+
+	httpClient := &http.Client{Timeout: 15 * time.Second}
+	req, _ := http.NewRequest("GET", ttsURL, nil)
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+
+	resp, err := httpClient.Do(req)
+	if err != nil || resp.StatusCode != 200 {
+		replyMessage(client, v, "❌ Google TTS failed. Try again!")
+		react(client, v, "❌")
+		return
+	}
+	defer resp.Body.Close()
+
+	mp3Data, err := io.ReadAll(resp.Body)
+	if err != nil || len(mp3Data) < 500 {
+		replyMessage(client, v, "❌ Audio not received from Google.")
+		return
+	}
+
+	timestamp := time.Now().UnixNano()
+	tempIn := fmt.Sprintf("./data/gtts_in_%d.mp3", timestamp)
+	tempOut := fmt.Sprintf("./data/gtts_out_%d.ogg", timestamp)
+
+	_ = os.WriteFile(tempIn, mp3Data, 0644)
+	defer func() { os.Remove(tempIn); os.Remove(tempOut) }()
+
+	err = exec.Command("ffmpeg", "-y", "-i", tempIn, "-c:a", "libopus", "-b:a", "32k", "-vbr", "on", tempOut).Run()
+	if err != nil {
+		replyMessage(client, v, "❌ Audio conversion failed. Is ffmpeg installed?")
+		return
+	}
+
+	oggData, err := os.ReadFile(tempOut)
+	if err != nil || len(oggData) == 0 {
+		replyMessage(client, v, "❌ Converted audio is empty.")
+		return
+	}
+
+	up, err := client.Upload(context.Background(), oggData, whatsmeow.MediaAudio)
+	if err != nil {
+		replyMessage(client, v, "❌ WhatsApp upload failed.")
+		return
+	}
+
+	isVoiceNote := true
+	_, err = client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+		AudioMessage: &waProto.AudioMessage{
+			URL: proto.String(up.URL), DirectPath: proto.String(up.DirectPath),
+			MediaKey: up.MediaKey, Mimetype: proto.String("audio/ogg; codecs=opus"),
+			FileEncSHA256: up.FileEncSHA256, FileSHA256: up.FileSHA256,
+			FileLength: proto.Uint64(uint64(len(oggData))), PTT: &isVoiceNote,
+			ContextInfo: &waProto.ContextInfo{
+				StanzaID: proto.String(v.Info.ID), Participant: proto.String(v.Info.Sender.String()),
+				QuotedMessage: v.Message,
+			},
+		},
+	})
+	if err != nil {
+		react(client, v, "❌")
+	} else {
+		react(client, v, "✅")
+	}
+}

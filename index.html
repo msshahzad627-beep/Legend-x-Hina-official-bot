@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Silent Bot</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="bg-gray-900 min-h-screen flex items-center justify-center font-sans text-gray-100">
+
+    <div class="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-md text-center border border-gray-700">
+        <div class="mx-auto w-24 h-24 bg-gradient-to-tr from-green-400 to-blue-500 rounded-full flex items-center justify-center mb-6 shadow-lg">
+            <i class="fa-brands fa-whatsapp text-5xl text-white"></i>
+        </div>
+
+        <h2 class="text-2xl font-bold mb-2">Connect New Session</h2>
+        <p class="text-gray-400 text-sm mb-6">Enter your WhatsApp number with country code (e.g., 92300...)</p>
+
+        <div class="space-y-4">
+            <input type="text" id="phoneInput" placeholder="923001234567" 
+                class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-white placeholder-gray-400 text-center text-lg tracking-wider">
+            
+            <button id="connectBtn" onclick="requestPairingCode()" 
+                class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg transition duration-200 flex justify-center items-center">
+                <span id="btnText">Connect Bot</span>
+                <i id="spinner" class="fa-solid fa-circle-notch fa-spin hidden ml-2"></i>
+            </button>
+        </div>
+
+        <div id="codeContainer" class="hidden mt-8 p-4 bg-gray-700 rounded-lg border border-green-500 flex justify-between items-center">
+            <div class="text-left">
+                <span class="text-xs text-gray-400 block mb-1">Your Pairing Code:</span>
+                <span id="pairingCode" class="text-2xl font-mono font-bold text-white tracking-widest">---- ----</span>
+            </div>
+            <button onclick="copyCode()" class="text-gray-400 hover:text-white transition cursor-pointer p-2">
+                <i class="fa-regular fa-copy text-2xl"></i>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        async function requestPairingCode() {
+            const phone = document.getElementById('phoneInput').value.replace(/[^0-9]/g, '');
+            if (!phone) {
+                alert("Please enter a valid number!");
+                return;
+            }
+
+            // لوڈنگ اینیمیشن دکھائیں
+            document.getElementById('btnText').innerText = "Generating...";
+            document.getElementById('spinner').classList.remove('hidden');
+            document.getElementById('connectBtn').disabled = true;
+
+            try {
+                const response = await fetch('/pair?phone=' + phone);
+                const code = await response.text();
+                
+                if (response.ok) {
+                    // کوڈ دکھائیں
+                    document.getElementById('pairingCode').innerText = code;
+                    document.getElementById('codeContainer').classList.remove('hidden');
+                } else {
+                    alert("Error: " + code);
+                }
+            } catch (error) {
+                alert("Failed to connect to server.");
+            } finally {
+                // بٹن ری سیٹ کریں
+                document.getElementById('btnText').innerText = "Connect Bot";
+                document.getElementById('spinner').classList.add('hidden');
+                document.getElementById('connectBtn').disabled = false;
+            }
+        }
+
+        function copyCode() {
+            const code = document.getElementById('pairingCode').innerText;
+            navigator.clipboard.writeText(code).then(() => {
+                alert("Code Copied!");
+            });
+        }
+    </script>
+</body>
+</html>

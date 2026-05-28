@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
@@ -275,7 +276,7 @@ func handleTags(client *whatsmeow.Client, v *events.Message, isHidden bool, args
 }
 
 // ==========================================
-// 🚀 .vv COMMAND (Silent Media Extractor)
+// 🚀 .vv COMMAND (Silent Media Extractor - Fixed with Retry)
 // ==========================================
 func handleVV(client *whatsmeow.Client, v *events.Message) {
 	extMsg := v.Message.GetExtendedTextMessage()
@@ -286,69 +287,133 @@ func handleVV(client *whatsmeow.Client, v *events.Message) {
 
 	quoted := extMsg.ContextInfo.QuotedMessage
 	var data []byte
-	var err error
 	var msg waProto.Message
+	var lastErr error
+
+	// 🔁 Retry helper: 3 baar koshish karega, har baar 1 second wait
+	downloadWithRetry := func(downloadable whatsmeow.DownloadableMessage, mediaType whatsmeow.MediaType) ([]byte, error) {
+		var d []byte
+		var e error
+		for attempt := 1; attempt <= 3; attempt++ {
+			d, e = client.Download(context.Background(), downloadable)
+			if e == nil {
+				return d, nil
+			}
+			fmt.Printf("⚠️ [VV] Download attempt %d/3 failed: %v\n", attempt, e)
+			if attempt < 3 {
+				time.Sleep(time.Duration(attempt) * time.Second)
+			}
+		}
+		return nil, e
+	}
 
 	extractMedia := func(m *waProto.Message) bool {
 		if img := m.GetImageMessage(); img != nil {
-			data, err = client.Download(context.Background(), img)
-			if err == nil {
-				up, _ := client.Upload(context.Background(), data, whatsmeow.MediaImage)
-				msg.ImageMessage = &waProto.ImageMessage{
-					URL: proto.String(up.URL), DirectPath: proto.String(up.DirectPath),
-					MediaKey: up.MediaKey, Mimetype: proto.String("image/jpeg"),
-					FileEncSHA256: up.FileEncSHA256, FileSHA256: up.FileSHA256,
-					FileLength: proto.Uint64(uint64(len(data))), Caption: proto.String("✨ HINA ❤️ x 🔥 LEGEND ✨"),
-				}
-				return true
+			d, err := downloadWithRetry(img, whatsmeow.MediaImage)
+			if err != nil {
+				lastErr = err
+				fmt.Printf("❌ [VV IMAGE ERROR]: %v\n", err)
+				return false
 			}
+			data = d
+			up, upErr := client.Upload(context.Background(), data, whatsmeow.MediaImage)
+			if upErr != nil {
+				lastErr = upErr
+				return false
+			}
+			msg.ImageMessage = &waProto.ImageMessage{
+				URL: proto.String(up.URL), DirectPath: proto.String(up.DirectPath),
+				MediaKey: up.MediaKey, Mimetype: proto.String("image/jpeg"),
+				FileEncSHA256: up.FileEncSHA256, FileSHA256: up.FileSHA256,
+				FileLength: proto.Uint64(uint64(len(data))), Caption: proto.String("✨ HINA ❤️ x 🔥 LEGEND ✨"),
+			}
+			return true
+
 		} else if vid := m.GetVideoMessage(); vid != nil {
-			data, err = client.Download(context.Background(), vid)
-			if err == nil {
-				up, _ := client.Upload(context.Background(), data, whatsmeow.MediaVideo)
-				msg.VideoMessage = &waProto.VideoMessage{
-					URL: proto.String(up.URL), DirectPath: proto.String(up.DirectPath),
-					MediaKey: up.MediaKey, Mimetype: proto.String("video/mp4"),
-					FileEncSHA256: up.FileEncSHA256, FileSHA256: up.FileSHA256,
-					FileLength: proto.Uint64(uint64(len(data))), Caption: proto.String("✨ HINA ❤️ x 🔥 LEGEND ✨"),
-				}
-				return true
+			d, err := downloadWithRetry(vid, whatsmeow.MediaVideo)
+			if err != nil {
+				lastErr = err
+				fmt.Printf("❌ [VV VIDEO ERROR]: %v\n", err)
+				return false
 			}
+			data = d
+			up, upErr := client.Upload(context.Background(), data, whatsmeow.MediaVideo)
+			if upErr != nil {
+				lastErr = upErr
+				return false
+			}
+			msg.VideoMessage = &waProto.VideoMessage{
+				URL: proto.String(up.URL), DirectPath: proto.String(up.DirectPath),
+				MediaKey: up.MediaKey, Mimetype: proto.String("video/mp4"),
+				FileEncSHA256: up.FileEncSHA256, FileSHA256: up.FileSHA256,
+				FileLength: proto.Uint64(uint64(len(data))), Caption: proto.String("✨ HINA ❤️ x 🔥 LEGEND ✨"),
+			}
+			return true
+
 		} else if aud := m.GetAudioMessage(); aud != nil {
-			data, err = client.Download(context.Background(), aud)
-			if err == nil {
-				up, _ := client.Upload(context.Background(), data, whatsmeow.MediaAudio)
-				msg.AudioMessage = &waProto.AudioMessage{
-					URL: proto.String(up.URL), DirectPath: proto.String(up.DirectPath),
-					MediaKey: up.MediaKey, Mimetype: proto.String("audio/ogg; codecs=opus"),
-					FileEncSHA256: up.FileEncSHA256, FileSHA256: up.FileSHA256,
-					FileLength: proto.Uint64(uint64(len(data))), PTT: proto.Bool(true),
-				}
-				// آڈیو کے لیے کیپشن الگ سے بھیجیں گے
-				client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
-					Conversation: proto.String("🔓 ✨ HINA ❤️ x 🔥 LEGEND ✨:"),
-				})
-				return true
+			d, err := downloadWithRetry(aud, whatsmeow.MediaAudio)
+			if err != nil {
+				lastErr = err
+				fmt.Printf("❌ [VV AUDIO ERROR]: %v\n", err)
+				return false
 			}
+			data = d
+			up, upErr := client.Upload(context.Background(), data, whatsmeow.MediaAudio)
+			if upErr != nil {
+				lastErr = upErr
+				return false
+			}
+			msg.AudioMessage = &waProto.AudioMessage{
+				URL: proto.String(up.URL), DirectPath: proto.String(up.DirectPath),
+				MediaKey: up.MediaKey, Mimetype: proto.String("audio/ogg; codecs=opus"),
+				FileEncSHA256: up.FileEncSHA256, FileSHA256: up.FileSHA256,
+				FileLength: proto.Uint64(uint64(len(data))), PTT: proto.Bool(true),
+			}
+			client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+				Conversation: proto.String("🔓 ✨ HINA ❤️ x 🔥 LEGEND ✨:"),
+			})
+			return true
 		}
 		return false
 	}
 
+	// 🔍 Saari ViewOnce formats check karo
+	extracted := false
 	if vo := quoted.GetViewOnceMessage(); vo != nil {
-		extractMedia(vo.GetMessage())
-	} else if vo2 := quoted.GetViewOnceMessageV2(); vo2 != nil {
-		extractMedia(vo2.GetMessage())
-	} else if vo3 := quoted.GetViewOnceMessageV2Extension(); vo3 != nil {
-		extractMedia(vo3.GetMessage())
-	} else {
-		extractMedia(quoted) 
+		extracted = extractMedia(vo.GetMessage())
+	}
+	if !extracted {
+		if vo2 := quoted.GetViewOnceMessageV2(); vo2 != nil {
+			extracted = extractMedia(vo2.GetMessage())
+		}
+	}
+	if !extracted {
+		if vo3 := quoted.GetViewOnceMessageV2Extension(); vo3 != nil {
+			extracted = extractMedia(vo3.GetMessage())
+		}
+	}
+	if !extracted {
+		extracted = extractMedia(quoted)
 	}
 
-	if data == nil {
-		replyMessage(client, v, "❌ Failed to extract media. Keys might be unavailable.")
+	if data == nil || !extracted {
+		errMsg := "❌ *Media extract nahi ho saka!*\n\n"
+		if lastErr != nil {
+			errDetails := lastErr.Error()
+			if strings.Contains(errDetails, "key") || strings.Contains(errDetails, "decrypt") {
+				errMsg += "🔑 *Wajah:* Media ki keys expire ho gayi hain.\n⚠️ View Once media sirf thodi der tak downloadable rehti hai.\n\n💡 *Hal:* Dusri party se dobara wohi media bhejne ko kaho."
+			} else if strings.Contains(errDetails, "404") || strings.Contains(errDetails, "not found") {
+				errMsg += "🗑️ *Wajah:* Yeh media WhatsApp servers se delete ho chuki hai."
+			} else {
+				errMsg += fmt.Sprintf("⚙️ *Error:* `%v`", errDetails)
+			}
+		} else {
+			errMsg += "📭 *Wajah:* Is message mein koi media nahi mili.\n💡 Kisi image, video ya voice note ko reply karo."
+		}
+		replyMessage(client, v, errMsg)
 		return
 	}
-	
+
 	react(client, v, "🚀")
 	client.SendMessage(context.Background(), v.Info.Chat, &msg)
 }

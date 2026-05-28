@@ -789,7 +789,13 @@ func processMessageAsync(client *whatsmeow.Client, v *events.Message) {
     case "rvc", "vc":
 		react(client, v, "🎙️")
 		go handleRVC(client, v)
-		
+
+	// 🎤 VOICE CLONE COMMAND
+	case "vcset", "clonevoice", "setvoice":
+		if !userIsOwner { react(client, v, "❌"); return }
+		react(client, v, "🎙️")
+		go handleVoiceCloneSet(client, v)
+
 	// 🚫 SECURITY COMMANDS
 	case "anticall":
         if !userIsOwner { react(client, v, "❌"); return }

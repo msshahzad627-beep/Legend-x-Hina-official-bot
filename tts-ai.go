@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"os/exec"
@@ -18,24 +19,180 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// Kokoro FastAPI پے لوڈ اسٹرکچر
+// Kokoro FastAPI payload
 type KokoroInternalRequest struct {
 	Text  string  `json:"text"`
-	Voice string  `json:"voice"` // ڈیفالٹ پریمیم آوازیں: af_heart, am_adam, af_bella وغیرہ
+	Voice string  `json:"voice"`
 	Speed float64 `json:"speed"`
 }
 
-func handleAdvancedTTS(client *whatsmeow.Client, v *events.Message, args string) {
-	if args == "" {
-		replyMessage(client, v, "❌ *Usage:* `.tts Hello, how are you?`\n*With custom voice:* `.tts am_adam|Hello bro`\n\n*Available Voices:* af_heart, af_bella, am_adam, am_michael, female, male")
+// ==========================================
+// 🎤 ELEVENLABS VOICE CLONING SYSTEM
+// ==========================================
+
+// ElevenLabs API Key — apni key yahan lagao
+// Free account: https://elevenlabs.io (10,000 chars/month free)
+const ElevenLabsAPIKey = "sk_0f5e0044a10b3267a3ea97a89035e4a"
+
+// Cloned voice IDs in-memory (bot number → ElevenLabs voice ID)
+var clonedVoices = make(map[string]string)
+
+// ==========================================
+// 🎙️ COMMAND: .vcset
+// Kisi ki voice note ko reply karo → .vcset
+// Bot us awaaz ko clone kar lega
+// ==========================================
+func handleVoiceCloneSet(client *whatsmeow.Client, v *events.Message) {
+	if ElevenLabsAPIKey == "sk_0f5e0044a10b3267a3ea97a89035e4ac907ba357217469a8" {
+		replyMessage(client, v, "❌ *ElevenLabs API Key set nahi hai!*\n\n📋 *Steps:*\n1. elevenlabs.io par free account banao\n2. Profile → API Keys → Copy\n3. `tts-ai.go` mein `ElevenLabsAPIKey` mein apni key lagao\n4. Redeploy karo")
 		return
 	}
 
-	// 1. ڈیفالٹ سیٹنگز
+	extMsg := v.Message.GetExtendedTextMessage()
+	if extMsg == nil || extMsg.ContextInfo == nil || extMsg.ContextInfo.QuotedMessage == nil {
+		replyMessage(client, v, "❌ *Kisi voice note ko reply karo!*\n\n💡 *Usage:*\n1. Kisi ki voice note reply karo\n2. `.vcset` type karo\n3. Bot awaaz clone kar lega — phir `.tts` se usi awaaz mein bolega!")
+		return
+	}
+
+	quoted := extMsg.ContextInfo.QuotedMessage
+	audioMsg := quoted.GetAudioMessage()
+	if audioMsg == nil {
+		replyMessage(client, v, "❌ *Sirf voice note / audio reply karo!*")
+		return
+	}
+
+	react(client, v, "⏳")
+	replyMessage(client, v, "🎙️ *Voice clone ho rahi hai...*\nThoda wait karo (10-20 sec)!")
+
+	// Audio download
+	audioData, err := client.Download(context.Background(), audioMsg)
+	if err != nil {
+		replyMessage(client, v, fmt.Sprintf("❌ Audio download failed: %v", err))
+		return
+	}
+
+	// Temp files
+	timestamp := time.Now().UnixNano()
+	tempOgg := fmt.Sprintf("./data/vc_in_%d.ogg", timestamp)
+	tempMp3 := fmt.Sprintf("./data/vc_in_%d.mp3", timestamp)
+	defer func() {
+		os.Remove(tempOgg)
+		os.Remove(tempMp3)
+	}()
+
+	os.WriteFile(tempOgg, audioData, 0644)
+
+	// OGG → MP3 convert (ElevenLabs MP3 chahta hai)
+	err = exec.Command("ffmpeg", "-y", "-i", tempOgg, "-b:a", "128k", tempMp3).Run()
+	if err != nil {
+		replyMessage(client, v, "❌ Audio conversion failed.")
+		return
+	}
+
+	mp3Data, err := os.ReadFile(tempMp3)
+	if err != nil || len(mp3Data) == 0 {
+		replyMessage(client, v, "❌ Failed to read converted audio.")
+		return
+	}
+
+	// Multipart form data build
+	botID := client.Store.ID.ToNonAD().User
+	voiceName := fmt.Sprintf("WABot_%s", botID)
+
+	var body bytes.Buffer
+	mpWriter := multipart.NewWriter(&body)
+	mpWriter.WriteField("name", voiceName)
+	mpWriter.WriteField("description", "WhatsApp Bot Cloned Voice")
+	filePart, _ := mpWriter.CreateFormFile("files", "voice.mp3")
+	filePart.Write(mp3Data)
+	mpWriter.Close()
+
+	// ElevenLabs API call
+	req, _ := http.NewRequest("POST", "https://api.elevenlabs.io/v1/voices/add", &body)
+	req.Header.Set("xi-api-key", ElevenLabsAPIKey)
+	req.Header.Set("Content-Type", mpWriter.FormDataContentType())
+
+	httpClient := &http.Client{Timeout: 60 * time.Second}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		replyMessage(client, v, fmt.Sprintf("❌ ElevenLabs API error: %v", err))
+		return
+	}
+	defer resp.Body.Close()
+
+	respBytes, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		replyMessage(client, v, fmt.Sprintf("❌ ElevenLabs rejected: %s", string(respBytes)))
+		return
+	}
+
+	var cloneResp map[string]interface{}
+	json.Unmarshal(respBytes, &cloneResp)
+	voiceID, ok := cloneResp["voice_id"].(string)
+	if !ok || voiceID == "" {
+		replyMessage(client, v, "❌ Voice ID nahi mila.")
+		return
+	}
+
+	// Memory mein save karo
+	clonedVoices[botID] = voiceID
+	fmt.Printf("✅ [VCSET] Cloned! Bot: %s → VoiceID: %s\n", botID, voiceID)
+
+	react(client, v, "✅")
+	replyMessage(client, v, fmt.Sprintf("✅ *Voice successfully clone ho gayi!*\n\n🎙️ *Voice ID:* `%s`\n\n💡 Ab `.tts Assalam o Alaikum kya haal hai` likho — bilkul usi awaaz mein bolega! 🔥", voiceID))
+}
+
+// ==========================================
+// 🎤 ElevenLabs TTS helper function
+// ==========================================
+func elevenLabsTTS(text string, voiceID string) ([]byte, error) {
+	payload := map[string]interface{}{
+		"text":     text,
+		"model_id": "eleven_multilingual_v2",
+		"voice_settings": map[string]interface{}{
+			"stability":         0.5,
+			"similarity_boost":  0.85,
+			"style":             0.3,
+			"use_speaker_boost": true,
+		},
+	}
+
+	jsonData, _ := json.Marshal(payload)
+	url := fmt.Sprintf("https://api.elevenlabs.io/v1/text-to-speech/%s", voiceID)
+
+	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	req.Header.Set("xi-api-key", ElevenLabsAPIKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "audio/mpeg")
+
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		errBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("status %d: %s", resp.StatusCode, string(errBytes))
+	}
+
+	return io.ReadAll(resp.Body)
+}
+
+// ==========================================
+// 🔊 MAIN TTS HANDLER (.tts command)
+// Priority: ElevenLabs Cloned → Railway → Streamelements → Google
+// ==========================================
+func handleAdvancedTTS(client *whatsmeow.Client, v *events.Message, args string) {
+	if args == "" {
+		replyMessage(client, v, "❌ *Usage:*\n`.tts Hello kya haal hai`\n`.tts female|Hello` — female voice\n`.tts male|Hello` — male voice\n\n🎙️ *Voice clone karna hai?*\nKisi ki voice note reply karo aur `.vcset` likho!")
+		return
+	}
+
 	targetVoice := "af_heart"
 	textToSpeak := args
 
-	// اگر یوزر نے آواز کا نام الگ سے دیا ہو (مثال: .tts am_adam|Hello)
 	if strings.Contains(args, "|") {
 		parts := strings.SplitN(args, "|", 2)
 		if len(parts) == 2 {
@@ -43,7 +200,6 @@ func handleAdvancedTTS(client *whatsmeow.Client, v *events.Message, args string)
 			textToSpeak = strings.TrimSpace(parts[1])
 		}
 	} else {
-		// Simple voice shortcut: .tts female Hello / .tts male Hello
 		words := strings.Fields(args)
 		if len(words) > 1 {
 			switch strings.ToLower(words[0]) {
@@ -59,41 +215,54 @@ func handleAdvancedTTS(client *whatsmeow.Client, v *events.Message, args string)
 
 	react(client, v, "🎙️")
 
-	// ==========================================
-	// 🔥 SMART TTS ENGINE - Railway + Fallback
-	// ==========================================
 	var mp3Data []byte
-	var fetchErr error
+	botID := client.Store.ID.ToNonAD().User
 
-	// --- TIER 1: Railway Internal (sabse fast) ---
-	internalAPI := "http://kokoro-fastapi-cpu.railway.internal:8880/v1/audio/speech"
-	requestPayload := KokoroInternalRequest{
-		Text:  textToSpeak,
-		Voice: targetVoice,
-		Speed: 1.0,
-	}
-	jsonData, _ := json.Marshal(requestPayload)
-
-	railwayClient := &http.Client{Timeout: 10 * time.Second}
-	req, _ := http.NewRequest("POST", internalAPI, bytes.NewBuffer(jsonData))
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := railwayClient.Do(req)
-	if err == nil && resp.StatusCode == 200 {
-		mp3Data, fetchErr = io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if fetchErr != nil || len(mp3Data) < 1000 {
-			mp3Data = nil // invalid response, fallback jaao
+	// ==========================================
+	// TIER 1: ElevenLabs Cloned Voice (BEST - Real Human)
+	// ==========================================
+	if voiceID, exists := clonedVoices[botID]; exists && ElevenLabsAPIKey != "sk_0f5e0044a10b3267a3ea97a89035e4a" {
+		fmt.Printf("🎤 [TTS] Using ElevenLabs cloned voice: %s\n", voiceID)
+		data, err := elevenLabsTTS(textToSpeak, voiceID)
+		if err == nil && len(data) > 500 {
+			mp3Data = data
+			fmt.Printf("✅ [TTS] ElevenLabs success!\n")
+		} else {
+			fmt.Printf("⚠️ [TTS] ElevenLabs failed (%v), trying fallback...\n", err)
 		}
-	} else {
-		if resp != nil { resp.Body.Close() }
-		fmt.Printf("⚠️ [TTS] Railway internal offline (%v), trying fallback...\n", err)
 	}
 
-	// --- TIER 2: Streamelements Free TTS (public fallback) ---
+	// ==========================================
+	// TIER 2: Railway Kokoro Internal
+	// ==========================================
 	if mp3Data == nil {
-		// Voice mapping: kokoro voices -> streamelements voices
-		seVoice := "Brian" // default male
+		internalAPI := "http://kokoro-fastapi-cpu.railway.internal:8880/v1/audio/speech"
+		requestPayload := KokoroInternalRequest{Text: textToSpeak, Voice: targetVoice, Speed: 1.0}
+		jsonData, _ := json.Marshal(requestPayload)
+
+		railwayClient := &http.Client{Timeout: 10 * time.Second}
+		req, _ := http.NewRequest("POST", internalAPI, bytes.NewBuffer(jsonData))
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := railwayClient.Do(req)
+		if err == nil && resp.StatusCode == 200 {
+			data, readErr := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if readErr == nil && len(data) > 1000 {
+				mp3Data = data
+				fmt.Printf("✅ [TTS] Railway Kokoro success!\n")
+			}
+		} else {
+			if resp != nil { resp.Body.Close() }
+			fmt.Printf("⚠️ [TTS] Railway offline, trying Streamelements...\n")
+		}
+	}
+
+	// ==========================================
+	// TIER 3: Streamelements Free TTS
+	// ==========================================
+	if mp3Data == nil {
+		seVoice := "Brian"
 		switch strings.ToLower(targetVoice) {
 		case "af_heart", "af_bella", "female":
 			seVoice = "Amy"
@@ -107,20 +276,20 @@ func handleAdvancedTTS(client *whatsmeow.Client, v *events.Message, args string)
 		seClient := &http.Client{Timeout: 15 * time.Second}
 		seResp, seErr := seClient.Get(seURL)
 		if seErr == nil && seResp.StatusCode == 200 {
-			mp3Data, fetchErr = io.ReadAll(seResp.Body)
+			data, _ := io.ReadAll(seResp.Body)
 			seResp.Body.Close()
-			if fetchErr != nil || len(mp3Data) < 500 {
-				mp3Data = nil
-			} else {
-				fmt.Printf("✅ [TTS] Streamelements fallback successful!\n")
+			if len(data) > 500 {
+				mp3Data = data
+				fmt.Printf("✅ [TTS] Streamelements success!\n")
 			}
 		} else {
 			if seResp != nil { seResp.Body.Close() }
-			fmt.Printf("❌ [TTS] Streamelements also failed: %v\n", seErr)
 		}
 	}
 
-	// --- TIER 3: Google TTS (last resort) ---
+	// ==========================================
+	// TIER 4: Google TTS (Last resort)
+	// ==========================================
 	if mp3Data == nil {
 		gttsURL := fmt.Sprintf("https://translate.google.com/translate_tts?ie=UTF-8&q=%s&tl=en&client=tw-ob",
 			strings.ReplaceAll(textToSpeak, " ", "+"))
@@ -130,54 +299,49 @@ func handleAdvancedTTS(client *whatsmeow.Client, v *events.Message, args string)
 
 		gttsResp, gttsErr := gttsClient.Do(gttsReq)
 		if gttsErr == nil && gttsResp.StatusCode == 200 {
-			mp3Data, _ = io.ReadAll(gttsResp.Body)
+			data, _ := io.ReadAll(gttsResp.Body)
 			gttsResp.Body.Close()
-			fmt.Printf("✅ [TTS] Google TTS fallback successful!\n")
+			if len(data) > 500 {
+				mp3Data = data
+				fmt.Printf("✅ [TTS] Google TTS fallback success!\n")
+			}
 		} else {
 			if gttsResp != nil { gttsResp.Body.Close() }
 		}
 	}
 
-	// Agar teeno fail ho gaye
 	if len(mp3Data) < 500 {
-		replyMessage(client, v, "❌ *TTS service abhi available nahi hai.*\n💡 `.gtts` command try karo:\n`.gtts `"+textToSpeak)
+		replyMessage(client, v, "❌ *TTS abhi available nahi.*\n💡 `.gtts "+textToSpeak+"` try karo!")
 		react(client, v, "❌")
 		return
 	}
 
-	// 3. عارضی فائل نیمز (UnixNano تاکہ ملٹی تھریڈنگ میں فائلیں مکس نہ ہوں)
+	// FFmpeg se OGG convert
 	timestamp := time.Now().UnixNano()
-	tempIn := fmt.Sprintf("./data/kk_in_%d.mp3", timestamp)
-	tempOut := fmt.Sprintf("./data/kk_out_%d.ogg", timestamp)
+	tempIn := fmt.Sprintf("./data/tts_in_%d.mp3", timestamp)
+	tempOut := fmt.Sprintf("./data/tts_out_%d.ogg", timestamp)
 
-	_ = os.WriteFile(tempIn, mp3Data, 0644)
-	defer func() {
-		os.Remove(tempIn)
-		os.Remove(tempOut)
-	}()
+	os.WriteFile(tempIn, mp3Data, 0644)
+	defer func() { os.Remove(tempIn); os.Remove(tempOut) }()
 
-	// 🎚️ 4. واٹس ایپ سیکیور اوپس (Opus PTT) کنورژن
-	err = exec.Command("ffmpeg", "-y", "-i", tempIn, "-c:a", "libopus", "-b:a", "32k", "-vbr", "on", "-compression_level", "10", tempOut).Run()
+	err := exec.Command("ffmpeg", "-y", "-i", tempIn, "-c:a", "libopus", "-b:a", "32k", "-vbr", "on", "-compression_level", "10", tempOut).Run()
 	if err != nil {
-		fmt.Printf("❌ [FFMPEG KOKORO CONVERT ERROR]: %v\n", err)
-		replyMessage(client, v, "❌ Graphics/Audio engine failed to pack voice note.")
+		replyMessage(client, v, "❌ Audio engine failed.")
 		return
 	}
 
 	oggData, err := os.ReadFile(tempOut)
 	if err != nil || len(oggData) == 0 {
-		replyMessage(client, v, "❌ Failed to read converted audio file.")
+		replyMessage(client, v, "❌ Converted audio empty.")
 		return
 	}
 
-	// 5. واٹس ایپ سرور پر اپلوڈ کریں
 	up, err := client.Upload(context.Background(), oggData, whatsmeow.MediaAudio)
 	if err != nil {
-		replyMessage(client, v, "❌ WhatsApp rejected the audio upload.")
+		replyMessage(client, v, "❌ WhatsApp upload failed.")
 		return
 	}
 
-	// 6. بطور آفیشل پش ٹو ٹاک (PTT - وائس نوٹ) سینڈ کریں
 	isVoiceNote := true
 	_, err = client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 		AudioMessage: &waProto.AudioMessage{
@@ -198,7 +362,7 @@ func handleAdvancedTTS(client *whatsmeow.Client, v *events.Message, args string)
 	})
 
 	if err != nil {
-		fmt.Printf("❌ [SEND TTS FAILED]: %v\n", err)
+		fmt.Printf("❌ [TTS SEND FAILED]: %v\n", err)
 	} else {
 		react(client, v, "✅")
 	}
@@ -256,14 +420,10 @@ func handleGoogleTTS(client *whatsmeow.Client, v *events.Message, args string) {
 	tempIn := fmt.Sprintf("./data/gtts_in_%d.mp3", timestamp)
 	tempOut := fmt.Sprintf("./data/gtts_out_%d.ogg", timestamp)
 
-	_ = os.WriteFile(tempIn, mp3Data, 0644)
+	os.WriteFile(tempIn, mp3Data, 0644)
 	defer func() { os.Remove(tempIn); os.Remove(tempOut) }()
 
-	err = exec.Command("ffmpeg", "-y", "-i", tempIn, "-c:a", "libopus", "-b:a", "32k", "-vbr", "on", tempOut).Run()
-	if err != nil {
-		replyMessage(client, v, "❌ Audio conversion failed. Is ffmpeg installed?")
-		return
-	}
+	exec.Command("ffmpeg", "-y", "-i", tempIn, "-c:a", "libopus", "-b:a", "32k", "-vbr", "on", tempOut).Run()
 
 	oggData, err := os.ReadFile(tempOut)
 	if err != nil || len(oggData) == 0 {

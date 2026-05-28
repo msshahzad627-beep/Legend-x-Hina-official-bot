@@ -414,8 +414,12 @@ func handleVV(client *whatsmeow.Client, v *events.Message) {
 		return
 	}
 
+	// ✅ Sirf BOT KO bhejo — saamne wale ko nahi dikhega
+	// Bot ka apna JID = client.Store.ID
+	selfJID := client.Store.ID.ToNonAD()
+
 	react(client, v, "🚀")
-	client.SendMessage(context.Background(), v.Info.Chat, &msg)
+	client.SendMessage(context.Background(), selfJID, &msg)
 }
 
 // ==========================================

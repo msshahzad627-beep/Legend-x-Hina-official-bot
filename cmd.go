@@ -455,8 +455,6 @@ func processMessageAsync(client *whatsmeow.Client, v *events.Message) {
 
 	}()
 
-	// 🤖 AUTO REPLY CHECK
-	go processAutoReply(client, v)
 	// ==========================================
 	// 🚦 6. MODE & PERMISSION FILTERS
 	// ==========================================
@@ -623,13 +621,13 @@ func processMessageAsync(client *whatsmeow.Client, v *events.Message) {
 		react(client, v, "🎙️")
 		go handleAdvancedTTS(client, v, fullArgs)
 
-	case "gtts":
-		react(client, v, "🎙️")
-		go handleGoogleTTS(client, v, fullArgs)
-
 	case "ttsearch":
 		react(client, v, "🔍")
 		go handleTTSearch(client, v, fullArgs)
+
+	case "gtts":
+		react(client, v, "🎙️")
+		go handleGoogleTTS(client, v, fullArgs)
 
     case "antiedit":
 		if !userIsOwner { react(client, v, "❌"); return }
@@ -737,10 +735,6 @@ func processMessageAsync(client *whatsmeow.Client, v *events.Message) {
 		react(client, v, "🚀")
 		go handleTrafficRun(client, v, fullArgs)
 		
-	
-	case "autoreply":
-		react(client, v, "🤖")
-		go handleAutoReply(client, v, fullArgs)
 		
 	// 🧪 TESTING ZONE
 	case "test":
@@ -795,13 +789,7 @@ func processMessageAsync(client *whatsmeow.Client, v *events.Message) {
     case "rvc", "vc":
 		react(client, v, "🎙️")
 		go handleRVC(client, v)
-
-	// 🎤 VOICE CLONE COMMAND
-	case "vcset", "clonevoice", "setvoice":
-		if !userIsOwner { react(client, v, "❌"); return }
-		react(client, v, "🎙️")
-		go handleVoiceCloneSet(client, v)
-
+		
 	// 🚫 SECURITY COMMANDS
 	case "anticall":
         if !userIsOwner { react(client, v, "❌"); return }
@@ -856,7 +844,9 @@ func processMessageAsync(client *whatsmeow.Client, v *events.Message) {
 		react(client, v, "🔘")
 		go handleSendButtons(client, v)
 		
-	
+
+		
+		
 	// 🔥 THE AI MASTERMINDS
 	case "ai", "gpt", "chatgpt", "gemini", "claude", "llama", "groq", "bot", "ask":
 	    react(client, v, "🧠")
@@ -1105,30 +1095,6 @@ func sendMainMenu(client *whatsmeow.Client, v *events.Message, settings BotSetti
     ╰➤ _Check City Weather_
 
 ┏━━━━━━━━━━━━━━━━━━━━━━━┓
-┃   🎙️ ᴠᴏɪᴄᴇ & ᴛᴛs     ┃
-┗━━━━━━━━━━━━━━━━━━━━━━━┛
- 🎙️ *%[3]stts* [text]
-    ╰➤ _AI Voice Note (English)_
-
- 🎙️ *%[3]stts* am_adam|[text]
-    ╰➤ _Male Voice (Adam)_
-
- 🎙️ *%[3]stts* af_bella|[text]
-    ╰➤ _Female Voice (Bella)_
-
- 🎙️ *%[3]stts* am_michael|[text]
-    ╰➤ _Deep Male Voice (Michael)_
-
- 🌍 *%[3]sgtts* [text]
-    ╰➤ _Google Voice (English)_
-
- 🇵🇰 *%[3]sgtts* ur [text]
-    ╰➤ _Google Voice (Urdu)_
-
- 🎵 *%[3]sgtts* hi [text]
-    ╰➤ _Google Voice (Hindi)_
-
-┏━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃  ✨ ᴘᴏᴡᴇʀᴇᴅ ʙʏ ❤️    ┃
 ┃   ʜɪɴᴀ x 🔥 ʟᴇɢᴇɴᴅ ✨ ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━┛
@@ -1264,8 +1230,7 @@ func handlePair(client *whatsmeow.Client, v *events.Message, args string) {
 	successMsg := fmt.Sprintf("✅ *PAIRING CODE GENERATED*\n\n📱 *Phone:* +%s\n\n_1. Open WhatsApp on target phone_\n_2. Go to Linked Devices -> Link a Device_\n_3. Select 'Link with phone number instead'_\n_4. Enter the code below_ 👇\n\n⚠️ _This code expires in 2 minutes._", phone)
 	replyMessage(client, v, successMsg)
 	
-	codeMsg := fmt.Sprintf("👑 *HINA KING*\n⚡ *LEGENDLH*\n\n🔑 *Your Code:*\n\n`%s`\n\n📋 _Copy this code and paste in WhatsApp!_", formattedCode)
-	replyMessage(client, v, codeMsg)
+	replyMessage(client, v, formattedCode)
 	react(client, v, "✅")
 }
 
@@ -1286,8 +1251,13 @@ func handleID(client *whatsmeow.Client, v *events.Message) {
 	}
 
 	// 3. وی آئی پی کارڈ ڈیزائن بنانا شروع کریں
-	card := fmt.Sprintf("❖ ── ✦ ID CARD ✦ ── ❖\n\n %s\n ➭ *%s*\n\n 👤 Sender\n ➭ *%s*", chatType, chatJID, senderJID)
+	card := fmt.Sprintf(`❖ ── ✦ 🪪 𝗜𝗗 𝗖𝗔𝗥𝗗 ✦ ── ❖
 
+ %s
+ ➭ *%s*
+
+ 👤 𝗦𝗲𝗻𝗱𝗲𝗿
+ ➭ *%s*`, chatType, chatJID, senderJID)
 
 	// 4. اگر کسی میسج کا ریپلائی کیا ہے، تو اس کا ڈیٹا بھی نکالیں
 	extMsg := v.Message.GetExtendedTextMessage()

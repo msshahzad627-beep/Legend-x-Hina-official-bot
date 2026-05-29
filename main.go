@@ -139,7 +139,7 @@ func ConnectNewSession(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "text/plain")
-	fmt.Fprintf(w, "HINAKING\n%s\nLEGENDH", formattedCode)
+	fmt.Fprintf(w, "%s", formattedCode)
 
 	log.Printf("🔗 Pairing code [%s] generated via Web for: %s", formattedCode, phone)
 }

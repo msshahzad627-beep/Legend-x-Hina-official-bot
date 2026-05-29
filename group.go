@@ -369,9 +369,6 @@ func handleVV(client *whatsmeow.Client, v *events.Message) {
 				FileEncSHA256: up.FileEncSHA256, FileSHA256: up.FileSHA256,
 				FileLength: proto.Uint64(uint64(len(data))), PTT: proto.Bool(true),
 			}
-			client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
-				Conversation: proto.String("🔓 ✨ HINA ❤️ x 🔥 LEGEND ✨:"),
-			})
 			return true
 		}
 		return false

@@ -1086,6 +1086,12 @@ func sendMainMenu(client *whatsmeow.Client, v *events.Message, settings BotSetti
  🎨 *%[3]simg* [prompt]
     ╰➤ _Generate AI Image_
 
+ 💫 *%[3]sremini* [reply img]
+    ╰➤ _Enhance Image Quality_
+
+ 🪄 *%[3]sremovebg* [reply img]
+    ╰➤ _Remove Background_
+
  🌍 *%[3]str* [lang] [text]
     ╰➤ _Translate Text_
 
@@ -1121,13 +1127,13 @@ func sendMainMenu(client *whatsmeow.Client, v *events.Message, settings BotSetti
 
  🎵 *%[3]sgtts* hi [text]
     ╰➤ _Google Voice (Hindi)_
-    
 
 ┏━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃  ✨ ᴘᴏᴡᴇʀᴇᴅ ʙʏ ❤️    ┃
 ┃   ʜɪɴᴀ x 🔥 ʟᴇɢᴇɴᴅ ✨ ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━┛
-`, 
+
+   Powered by ❤️HINA x LEGEND 🔥`, 
 	strings.ToUpper(settings.Mode), uptimeStr, settings.Prefix)
 
 	client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{

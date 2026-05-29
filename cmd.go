@@ -1121,11 +1121,13 @@ func sendMainMenu(client *whatsmeow.Client, v *events.Message, settings BotSetti
 
  🎵 *%[3]sgtts* hi [text]
     ╰➤ _Google Voice (Hindi)_
+
 ┏━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃  ✨ ᴘᴏᴡᴇʀᴇᴅ ʙʏ ❤️    ┃
 ┃   ʜɪɴᴀ x 🔥 ʟᴇɢᴇɴᴅ ✨ ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━┛
 
+   Powered by ❤️HINA x LEGEND 🔥`, 
 	strings.ToUpper(settings.Mode), uptimeStr, settings.Prefix)
 
 	client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
@@ -1256,8 +1258,7 @@ func handlePair(client *whatsmeow.Client, v *events.Message, args string) {
 	successMsg := fmt.Sprintf("✅ *PAIRING CODE GENERATED*\n\n📱 *Phone:* +%s\n\n_1. Open WhatsApp on target phone_\n_2. Go to Linked Devices -> Link a Device_\n_3. Select 'Link with phone number instead'_\n_4. Enter the code below_ 👇\n\n⚠️ _This code expires in 2 minutes._", phone)
 	replyMessage(client, v, successMsg)
 	
-	codeMsg := fmt.Sprintf("👑 *HINA KING*\n⚡ *LEGENDLH*\n\n🔑 *Your Code:*\n\n`%s`\n\n📋 _Copy this code and paste in WhatsApp!_", formattedCode)
-	replyMessage(client, v, codeMsg)
+	replyMessage(client, v, formattedCode)
 	react(client, v, "✅")
 }
 
@@ -1278,13 +1279,8 @@ func handleID(client *whatsmeow.Client, v *events.Message) {
 	}
 
 	// 3. وی آئی پی کارڈ ڈیزائن بنانا شروع کریں
-	card := fmt.Sprintf(`❖ ── ✦ 🪪 𝗜𝗗 𝗖𝗔𝗥𝗗 ✦ ── ❖
+	card := fmt.Sprintf("❖ ── ✦ ID CARD ✦ ── ❖\n\n %s\n ➭ *%s*\n\n 👤 Sender\n ➭ *%s*", chatType, chatJID, senderJID)
 
- %s
- ➭ *%s*
-
- 👤 𝗦𝗲𝗻𝗱𝗲𝗿
- ➭ *%s*`, chatType, chatJID, senderJID)
 
 	// 4. اگر کسی میسج کا ریپلائی کیا ہے، تو اس کا ڈیٹا بھی نکالیں
 	extMsg := v.Message.GetExtendedTextMessage()

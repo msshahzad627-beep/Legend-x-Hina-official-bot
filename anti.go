@@ -86,21 +86,20 @@ func handleAntiDeleteToggle(client *whatsmeow.Client, v *events.Message, args st
 	err := settingsDB.QueryRow("SELECT anti_delete_group FROM personal_log_settings WHERE bot_jid = ?", botJID).Scan(&currentGroup)
 	if err != nil { currentGroup = "" }
 
+	// Sender ka apna DM JID use karo
+	senderDMJID := v.Info.Sender.ToNonAD().String()
+
 	if args == "on" {
-		if currentGroup == chatJID {
-			replyMessage(client, v, "⚠️ *Already ON:* This is already your personal Log Group for Anti-Delete.")
+		if currentGroup == senderDMJID {
+			replyMessage(client, v, "⚠️ *Already ON:* Anti-Delete is already active!")
 			return
 		}
 		
-		settingsDB.Exec("UPDATE personal_log_settings SET anti_delete_group = ? WHERE bot_jid = ?", chatJID, botJID)
+		settingsDB.Exec("UPDATE personal_log_settings SET anti_delete_group = ? WHERE bot_jid = ?", senderDMJID, botJID)
 		react(client, v, "✅")
-		replyMessage(client, v, "✅ *Personal Log Group Activated!* Private deleted messages will now be forwarded here.")
+		replyMessage(client, v, "✅ *Anti-Delete ON!* Deleted messages will come directly to your DM only!")
 		
 	} else if args == "off" {
-		if currentGroup != chatJID {
-			replyMessage(client, v, "⚠️ *Error:* You can only turn this OFF from the exact Log Group where you turned it ON.")
-			return
-		}
 		
 		settingsDB.Exec("UPDATE personal_log_settings SET anti_delete_group = '' WHERE bot_jid = ?", botJID)
 		react(client, v, "✅")
@@ -406,10 +405,6 @@ func handleAntiEditToggle(client *whatsmeow.Client, v *events.Message, args stri
 		replyMessage(client, v, "✅ *Anti-Edit Log Group Activated!*\nEdited messages from both Private & Groups will now be forwarded here.")
 		
 	} else if args == "off" {
-		if currentGroup != chatJID {
-			replyMessage(client, v, "⚠️ *Error:* You can only turn this OFF from the exact Log Group where you turned it ON.")
-			return
-		}
 		
 		settingsDB.Exec("UPDATE personal_log_settings SET anti_edit_group = '' WHERE bot_jid = ?", botJID)
 		react(client, v, "✅")

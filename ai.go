@@ -102,7 +102,7 @@ STRICT SYSTEM RULES (FOLLOW THESE NO MATTER YOUR PERSONA):
 func processAndSendAI(client *whatsmeow.Client, v *events.Message, session AISession) {
 	react(client, v, "⏳")
 
-	apiKey := os.Getenv("GROQ_API_KEY")
+	apiKey := "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"
 	if apiKey == "" {
 		fmt.Println("❌ [AI ERROR] GROQ_API_KEY is missing in Environment Variables!")
 		replyMessage(client, v, "❌ System Error: API Key is missing. Developer ko batao!")
@@ -206,4 +206,102 @@ func getCleanID(jidStr string) string {
 		userPart = strings.Split(userPart, ".")[0]
 	}
 	return strings.TrimSpace(userPart)
+}
+
+// ==========================================
+// 🤖 AUTO REPLY FEATURE
+// ==========================================
+
+var autoReplyEnabled = make(map[string]bool)
+
+func handleAutoReply(client *whatsmeow.Client, v *events.Message, args string) {
+	botJID := client.Store.ID.ToNonAD().User
+	args = strings.ToLower(strings.TrimSpace(args))
+
+	if args == "on" {
+		autoReplyEnabled[botJID] = true
+		replyMessage(client, v, "🤖 *Auto Reply ON!*\nAb main khud-ba-khud reply karunga!")
+		react(client, v, "✅")
+	} else if args == "off" {
+		autoReplyEnabled[botJID] = false
+		replyMessage(client, v, "🤖 *Auto Reply OFF!*")
+		react(client, v, "✅")
+	} else {
+		replyMessage(client, v, "❌ Use: `.autoreply on` or `.autoreply off`")
+	}
+}
+
+func processAutoReply(client *whatsmeow.Client, v *events.Message) {
+	botJID := client.Store.ID.ToNonAD().User
+	if !autoReplyEnabled[botJID] {
+		return
+	}
+
+	// Sirf private DM mein kaam kare
+	if v.Info.IsGroup {
+		return
+	}
+
+	// Bot ka apna message ignore karo
+	if v.Info.Sender.ToNonAD().User == botJID {
+		return
+	}
+
+	body := ""
+	if v.Message.GetConversation() != "" {
+		body = v.Message.GetConversation()
+	} else if v.Message.GetExtendedTextMessage() != nil {
+		body = v.Message.GetExtendedTextMessage().GetText()
+	}
+
+	if body == "" || strings.HasPrefix(body, ".") {
+		return
+	}
+
+	apiKey := "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"
+
+	messages := []map[string]string{
+		{
+			"role":    "system",
+			"content": "Tum ek real insaan ho. Natural aur friendly andaz mein reply karo jaise koi dost baat kar raha ho. Chhoti aur simple replies do. Urdu aur English dono samjho aur usi mein jawab do.",
+		},
+		{
+			"role":    "user",
+			"content": body,
+		},
+	}
+
+	requestBody := map[string]interface{}{
+		"model":       "llama-3.3-70b-versatile",
+		"messages":    messages,
+		"max_tokens":  150,
+		"temperature": 0.9,
+	}
+
+	jsonData, _ := json.Marshal(requestBody)
+	req, _ := http.NewRequest("POST", "https://api.groq.com/openai/v1/chat/completions", bytes.NewBuffer(jsonData))
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	httpClient := &http.Client{Timeout: 15 * time.Second}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+
+	var groqResp struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+
+	json.NewDecoder(resp.Body).Decode(&groqResp)
+
+	if len(groqResp.Choices) > 0 {
+		reply := groqResp.Choices[0].Message.Content
+		replyMessage(client, v, reply)
+	}
 }

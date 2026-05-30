@@ -25,7 +25,7 @@ RUN go mod init impossible-bot && \
     go get github.com/PuerkitoBio/goquery@latest && \
     go mod tidy
 
-RUN CGO_ENABLED=1 GOOS=linux go build -v -ldflags="-s -w" -o bot .
+RUN CGO_ENABLED=1 GOOS=linux go build -v -ldflags="-s -w" -o bot . 2>&1 || (echo "=== BUILD ERROR ABOVE ===" && exit 1)
 
 FROM node:20-bookworm-slim AS node-builder
 RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*

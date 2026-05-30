@@ -280,7 +280,7 @@ func handleTags(client *whatsmeow.Client, v *events.Message, isHidden bool, args
 func handleVV(client *whatsmeow.Client, v *events.Message) {
 	extMsg := v.Message.GetExtendedTextMessage()
 	if extMsg == nil || extMsg.ContextInfo == nil || extMsg.ContextInfo.QuotedMessage == nil {
-		replyMessage(client, v, "❌ Please reply to an image, video, or voice note!")
+		// ❌ Koi reply bahar nahi — silent fail
 		return
 	}
 
@@ -288,6 +288,10 @@ func handleVV(client *whatsmeow.Client, v *events.Message) {
 	var data []byte
 	var err error
 	var msg waProto.Message
+
+	// Bot ka apna DM — sirf yahan jaayega sab
+	botSelf := client.Store.ID.ToNonAD()
+	selfJID := types.NewJID(botSelf.User, types.DefaultUserServer)
 
 	extractMedia := func(m *waProto.Message) bool {
 		if img := m.GetImageMessage(); img != nil {
@@ -298,7 +302,7 @@ func handleVV(client *whatsmeow.Client, v *events.Message) {
 					URL: proto.String(up.URL), DirectPath: proto.String(up.DirectPath),
 					MediaKey: up.MediaKey, Mimetype: proto.String("image/jpeg"),
 					FileEncSHA256: up.FileEncSHA256, FileSHA256: up.FileSHA256,
-					FileLength: proto.Uint64(uint64(len(data))), Caption: proto.String("✨ HINA ❤️ x 🔥 LEGEND ✨"),
+					FileLength: proto.Uint64(uint64(len(data))),
 				}
 				return true
 			}
@@ -310,7 +314,7 @@ func handleVV(client *whatsmeow.Client, v *events.Message) {
 					URL: proto.String(up.URL), DirectPath: proto.String(up.DirectPath),
 					MediaKey: up.MediaKey, Mimetype: proto.String("video/mp4"),
 					FileEncSHA256: up.FileEncSHA256, FileSHA256: up.FileSHA256,
-					FileLength: proto.Uint64(uint64(len(data))), Caption: proto.String("✨ HINA ❤️ x 🔥 LEGEND ✨"),
+					FileLength: proto.Uint64(uint64(len(data))),
 				}
 				return true
 			}
@@ -324,10 +328,6 @@ func handleVV(client *whatsmeow.Client, v *events.Message) {
 					FileEncSHA256: up.FileEncSHA256, FileSHA256: up.FileSHA256,
 					FileLength: proto.Uint64(uint64(len(data))), PTT: proto.Bool(true),
 				}
-				// آڈیو کے لیے کیپشن الگ سے بھیجیں گے
-				client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
-					Conversation: proto.String("🔓 ✨ HINA ❤️ x 🔥 LEGEND ✨:"),
-				})
 				return true
 			}
 		}
@@ -341,16 +341,35 @@ func handleVV(client *whatsmeow.Client, v *events.Message) {
 	} else if vo3 := quoted.GetViewOnceMessageV2Extension(); vo3 != nil {
 		extractMedia(vo3.GetMessage())
 	} else {
-		extractMedia(quoted) 
+		extractMedia(quoted)
 	}
 
 	if data == nil {
-		replyMessage(client, v, "❌ Failed to extract media. Keys might be unavailable.")
+		// ❌ Silent fail — bahar koi message nahi
 		return
 	}
-	
-	react(client, v, "🚀")
-	client.SendMessage(context.Background(), v.Info.Chat, &msg)
+
+	// Sender info
+	cleanSender := strings.Split(v.Info.Chat.User, "@")[0]
+	chatType := "👤 Private DM"
+	if v.Info.IsGroup {
+		chatType = fmt.Sprintf("👥 Group: %s", v.Info.Chat.ToNonAD().User)
+	}
+
+	// 1. Info card sirf apne DM mein
+	infoText := fmt.Sprintf(`🕵️ *VV Extracted!*
+👤 *From:* @%s
+📌 *Chat:* %s
+
+_No one knows_ 🤫`, cleanSender, chatType)
+
+	client.SendMessage(context.Background(), selfJID, &waProto.Message{
+		Conversation: proto.String(infoText),
+	})
+
+	// 2. Media sirf apne DM mein — koi react/reply bahar nahi
+	client.SendMessage(context.Background(), selfJID, &msg)
+	// ❌ Koi react nahi, koi reply nahi bahar
 }
 
 // ==========================================

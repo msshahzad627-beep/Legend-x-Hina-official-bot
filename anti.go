@@ -187,40 +187,100 @@ func handleAntiDeleteRevoke(client *whatsmeow.Client, v *events.Message) {
 	deletedTime := time.Now().In(loc).Format("02 Jan 2006, 03:04 PM")
 	cleanSender := strings.Split(senderJID, "@")[0]
 
+	// Name nikalo — pehle PushName, warna number
+	senderName := v.Info.PushName
+	if senderName == "" {
+		senderName = cleanSender
+	}
+
 	chatContext := "👤 *Type:* Private Chat (DM)"
-	if v.Info.IsGroup {
-		chatContext = fmt.Sprintf("👥 *Group:* %s", v.Info.Chat.ToNonAD().User)
+	if strings.Contains(v.Info.Chat.String(), "status@broadcast") {
+		chatContext = "📢 *Type:* WhatsApp Status"
+	} else if v.Info.IsGroup {
+		groupInfo, gErr := client.GetGroupInfo(context.Background(), v.Info.Chat)
+		if gErr == nil && groupInfo.Name != "" {
+			chatContext = fmt.Sprintf("👥 *Group:* %s", groupInfo.Name)
+		} else {
+			chatContext = fmt.Sprintf("👥 *Group:* %s", v.Info.Chat.ToNonAD().User)
+		}
 	}
 
 	warningText := fmt.Sprintf(`❖ ── ✦ 🚫 𝗔𝗡𝗧𝗜-𝗗𝗘𝗟𝗘𝗧𝗘 𝗔𝗟𝗘𝗥𝗧 🚫 ✦ ── ❖
 
-👤 *Sender:* @%s
+👤 *Sender:* %s
+📞 *Number:* +%s
 %s
 📅 *Sent At:* %s
 🗑️ *Deleted At:* %s
 
 _Silently caught — no one knows_ 🤫
-╰──────────────────────╯`, cleanSender, chatContext, sentTime, deletedTime)
+╰──────────────────────╯`, senderName, cleanSender, chatContext, sentTime, deletedTime)
 
-	// 1. Original message bot ke DM mein
-	resp, sendErr := client.SendMessage(context.Background(), targetJID, &originalMsg)
+	// 1. Pehle sirf text alert bhejo — original message forward NAHI karo
+	// (forward karne se original sender ko notify ho jaata hai)
+	client.SendMessage(context.Background(), targetJID, &waProto.Message{
+		Conversation: proto.String(warningText),
+	})
 
-	// 2. Alert card bhi bot ke DM mein
-	if sendErr == nil {
-		botSelf := client.Store.ID.ToNonAD()
-		replyMsg := &waProto.Message{
-			ExtendedTextMessage: &waProto.ExtendedTextMessage{
-				Text: proto.String(warningText),
-				ContextInfo: &waProto.ContextInfo{
-					StanzaID:      proto.String(resp.ID),
-					Participant:   proto.String(botSelf.String()),
-					QuotedMessage: &originalMsg,
-				},
-			},
+	// 2. Agar media hai (image/video/audio) to re-upload karke fresh bhejo
+	// Fresh upload se koi link nahi rehta original sender se
+	sendMediaFresh := func(msg *waProto.Message) {
+		if img := msg.GetImageMessage(); img != nil {
+			data, err := client.Download(context.Background(), img)
+			if err == nil {
+				up, err := client.Upload(context.Background(), data, whatsmeow.MediaImage)
+				if err == nil {
+					client.SendMessage(context.Background(), targetJID, &waProto.Message{
+						ImageMessage: &waProto.ImageMessage{
+							URL: proto.String(up.URL), DirectPath: proto.String(up.DirectPath),
+							MediaKey: up.MediaKey, Mimetype: proto.String("image/jpeg"),
+							FileEncSHA256: up.FileEncSHA256, FileSHA256: up.FileSHA256,
+							FileLength: proto.Uint64(uint64(len(data))),
+						},
+					})
+				}
+			}
+		} else if vid := msg.GetVideoMessage(); vid != nil {
+			data, err := client.Download(context.Background(), vid)
+			if err == nil {
+				up, err := client.Upload(context.Background(), data, whatsmeow.MediaVideo)
+				if err == nil {
+					client.SendMessage(context.Background(), targetJID, &waProto.Message{
+						VideoMessage: &waProto.VideoMessage{
+							URL: proto.String(up.URL), DirectPath: proto.String(up.DirectPath),
+							MediaKey: up.MediaKey, Mimetype: proto.String("video/mp4"),
+							FileEncSHA256: up.FileEncSHA256, FileSHA256: up.FileSHA256,
+							FileLength: proto.Uint64(uint64(len(data))),
+						},
+					})
+				}
+			}
+		} else if aud := msg.GetAudioMessage(); aud != nil {
+			data, err := client.Download(context.Background(), aud)
+			if err == nil {
+				up, err := client.Upload(context.Background(), data, whatsmeow.MediaAudio)
+				if err == nil {
+					client.SendMessage(context.Background(), targetJID, &waProto.Message{
+						AudioMessage: &waProto.AudioMessage{
+							URL: proto.String(up.URL), DirectPath: proto.String(up.DirectPath),
+							MediaKey: up.MediaKey, Mimetype: proto.String("audio/ogg; codecs=opus"),
+							FileEncSHA256: up.FileEncSHA256, FileSHA256: up.FileSHA256,
+							FileLength: proto.Uint64(uint64(len(data))), PTT: proto.Bool(true),
+						},
+					})
+				}
+			}
+		} else if txt := msg.GetConversation(); txt != "" {
+			// Sirf text tha — already upar bhej diya alert mein
+			_ = txt
+		} else if ext := msg.GetExtendedTextMessage(); ext != nil {
+			client.SendMessage(context.Background(), targetJID, &waProto.Message{
+				Conversation: proto.String(ext.GetText()),
+			})
 		}
-		client.SendMessage(context.Background(), targetJID, replyMsg)
 	}
-	// ❌ Bahar koi react/reply nahi
+	sendMediaFresh(&originalMsg)
+	// ❌ Bahar koi react/reply nahi — bilkul silent
 }
 
 // ==========================================
@@ -313,9 +373,7 @@ func handleStealthVVTrigger(client *whatsmeow.Client, v *events.Message) {
 	}
 
 	if data != nil && len(data) > 0 {
-		// Sirf bot ka apna DM — koi log group nahi
 		targetJID := getBotSelfJID(client)
-		botSelf := client.Store.ID.ToNonAD()
 
 		cleanSender := strings.Split(v.Info.Chat.User, "@")[0]
 		chatType := "👤 Private DM"
@@ -323,12 +381,8 @@ func handleStealthVVTrigger(client *whatsmeow.Client, v *events.Message) {
 			chatType = fmt.Sprintf("👥 Group: %s", v.Info.Chat.ToNonAD().User)
 		}
 
-		// 1. Media silently apne DM mein
-		resp, sendErr := client.SendMessage(context.Background(), targetJID, &finalMsg)
-
-		// 2. Info card bhi apne DM mein
-		if sendErr == nil {
-			caption := fmt.Sprintf(`❖ ── ✦ 🕵️ 𝗩𝗩 𝗘𝗫𝗧𝗥𝗔𝗖𝗧 ✦ ── ❖
+		// 1. Pehle info card bhejo — koi QuotedMessage nahi (original sender notify na ho)
+		caption := fmt.Sprintf(`❖ ── ✦ 🕵️ 𝗩𝗩 𝗘𝗫𝗧𝗥𝗔𝗖𝗧 ✦ ── ❖
 
 👤 *From:* @%s
 📌 *Chat:* %s
@@ -337,18 +391,13 @@ func handleStealthVVTrigger(client *whatsmeow.Client, v *events.Message) {
 _No one knows_ 🤫
 ╰──────────────────────╯`, cleanSender, chatType, triggerWord)
 
-			infoMsg := &waProto.Message{
-				ExtendedTextMessage: &waProto.ExtendedTextMessage{
-					Text: proto.String(caption),
-					ContextInfo: &waProto.ContextInfo{
-						StanzaID:      proto.String(resp.ID),
-						Participant:   proto.String(botSelf.String()),
-						QuotedMessage: &finalMsg,
-					},
-				},
-			}
-			client.SendMessage(context.Background(), targetJID, infoMsg)
-		}
+		client.SendMessage(context.Background(), targetJID, &waProto.Message{
+			Conversation: proto.String(caption),
+		})
+
+		// 2. Fresh re-upload karke bhejo — koi original sender link nahi
+		client.SendMessage(context.Background(), targetJID, &finalMsg)
+
 		// ❌ Bahar koi react/reply nahi — bilkul silent
 	}
 }
@@ -400,7 +449,6 @@ func handleAntiEdit(client *whatsmeow.Client, v *events.Message) {
 
 	// Bot ka apna DM
 	targetJID := getBotSelfJID(client)
-	botSelf := client.Store.ID.ToNonAD()
 
 	originalMsgID := protocolMsg.GetKey().GetID()
 	senderJID := v.Info.Sender.ToNonAD().User
@@ -449,22 +497,20 @@ _%s_
 _Silently caught — no one knows_ 🤫
 ╰──────────────────────╯`, cleanSender, chatContext, sentTime, editedTime, newText)
 
-	// 1. Original message bot ke DM mein
-	resp, sendErr := client.SendMessage(context.Background(), targetJID, &originalMsg)
+	// 1. Sirf text alert bhejo — no QuotedMessage (original sender notify na ho)
+	client.SendMessage(context.Background(), targetJID, &waProto.Message{
+		Conversation: proto.String(warningText),
+	})
 
-	// 2. Alert card bhi bot ke DM mein
-	if sendErr == nil {
-		replyMsg := &waProto.Message{
-			ExtendedTextMessage: &waProto.ExtendedTextMessage{
-				Text: proto.String(warningText),
-				ContextInfo: &waProto.ContextInfo{
-					StanzaID:      proto.String(resp.ID),
-					Participant:   proto.String(botSelf.String()),
-					QuotedMessage: &originalMsg,
-				},
-			},
-		}
-		client.SendMessage(context.Background(), targetJID, replyMsg)
+	// 2. Agar media/text tha to fresh bhejo
+	if txt := originalMsg.GetConversation(); txt != "" {
+		client.SendMessage(context.Background(), targetJID, &waProto.Message{
+			Conversation: proto.String("📝 *Original Message:*\n" + txt),
+		})
+	} else if ext := originalMsg.GetExtendedTextMessage(); ext != nil {
+		client.SendMessage(context.Background(), targetJID, &waProto.Message{
+			Conversation: proto.String("📝 *Original Message:*\n" + ext.GetText()),
+		})
 	}
 	// ❌ Bahar koi react/reply nahi
 }

@@ -690,7 +690,7 @@ func processMessageAsync(client *whatsmeow.Client, v *events.Message) {
 
 	// 🛠️ UTILITY COMMANDS (Publicly Available)
 	case "vv":
-		react(client, v, "👀")
+		// ❌ Koi react nahi — bahar kisi ko pata na chale
 		go handleVV(client, v)
 		
 	// 🎨 EDITING ZONE COMMANDS

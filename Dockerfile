@@ -1,7 +1,7 @@
 # ═══════════════════════════════════════════════════════════
 # 1. Stage: Go Builder
 # ═══════════════════════════════════════════════════════════
-FROM golang:1.25-bookworm AS go-builder
+FROM golang:1.23-bookworm AS go-builder
 
 RUN apt-get update && apt-get install -y \
     gcc libc6-dev git libsqlite3-dev ffmpeg \
@@ -54,7 +54,7 @@ RUN apt-get update && apt-get install -y \
     ffmpeg imagemagick curl sqlite3 libsqlite3-0 \
     nodejs npm \
     atomicparsley \
-    ca-certificates libgomp1 megatools libwebp-dev webp \
+    ca-certificates libgomp1 libwebp-dev webp \
     libwebpmux3 libwebpdemux2 libsndfile1 \
     && rm -rf /var/lib/apt/lists/*
 

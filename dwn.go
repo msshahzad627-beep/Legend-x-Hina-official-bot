@@ -126,103 +126,11 @@ func downloadViaAPI(client *whatsmeow.Client, v *events.Message, targetUrl, reso
 		downloadAndSend(client, v, targetUrl, mode)
 	}
 
-	httpClient := &http.Client{Timeout: 5 * time.Minute}
 
-	// 🔥 ڈائریکٹ اور کچا لنک
-	apiUrl := fmt.Sprintf("https://youtube-dwn-production-a806.up.railway.app/api/download?url=%s&resolution=%s", targetUrl, resolution)
-	
-	resp, err := httpClient.Get(apiUrl)
-	if err != nil { 
-		fmt.Printf("\n❌❌ [API NETWORK ERROR]: %v\n", err)
-		executeFallback() 
-		return 
-	}
-	defer resp.Body.Close()
 
-	// ----------------------------------------------------
-	// 🔍 API کا کچا چٹھا (Raw Body) پڑھنا
-	// ----------------------------------------------------
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Printf("\n❌❌ [API BODY READ ERROR]: %v\n", err)
-		executeFallback()
-		return
-	}
-
-	var apiRes APIResponse
-	err = json.Unmarshal(bodyBytes, &apiRes)
-
-	if err != nil || !apiRes.Success || apiRes.DownloadURL == "" {
-		fmt.Printf("\n======================================================\n")
-		fmt.Printf("⚠️ [API FAILED - PRINTING RAW RESPONSE (KACHA CHITHA)] ⚠️\n")
-		fmt.Printf("👉 Hit URL: %s\n", apiUrl)
-		if err != nil {
-			fmt.Printf("👉 JSON Parse Error: %v\n", err)
-		}
-		fmt.Printf("👉 Raw Response: %s\n", string(bodyBytes)) 
-		fmt.Printf("🔄 Now triggering executeFallback() -> Tier 2...\n")
-		fmt.Printf("======================================================\n\n")
-		
-		executeFallback()
-		return
-	}
-
-	// اگر یہاں تک آ گیا تو مطلب API پاس ہو گئی ہے
-	fileResp, err := httpClient.Get(apiRes.DownloadURL)
-	if err != nil { 
-		fmt.Printf("\n❌ [FILE DOWNLOAD ERROR]: %v\n", err)
-		executeFallback() 
-		return 
-	}
-	defer fileResp.Body.Close()
-
-	ext := ".mp4"
-	if isAudio { ext = ".mp3" }
-	tempFileName := fmt.Sprintf("./data/temp_%d%s", time.Now().UnixNano(), ext)
-	
-	outFile, err := os.Create(tempFileName)
-	if err != nil { executeFallback(); return }
-	
-	_, err = io.Copy(outFile, fileResp.Body)
-	outFile.Close()
-	if err != nil { 
-		os.Remove(tempFileName)
-		executeFallback() 
-		return 
-	}
-
-	defer os.Remove(tempFileName)
-
-	fileInfo, err := os.Stat(tempFileName)
-	if err != nil { executeFallback(); return }
-	
-	fileSize := fileInfo.Size()
-	var filesToSend []string
-
-	stopAnim() 
-
-	if fileSize > int64(MaxWhatsAppSize) && !isAudio {
-		react(client, v, "✂️") 
-		parts, err := splitVideoSmart(tempFileName, SafeMarginMB)
-		if err != nil || len(parts) == 0 {
-			filesToSend = append(filesToSend, tempFileName)
-		} else {
-			filesToSend = parts
-		}
-	} else {
-		filesToSend = append(filesToSend, tempFileName)
-	}
-
-	react(client, v, "📤")
-
-	for i, filePath := range filesToSend {
-		uploadAndSendFile(client, v, filePath, apiRes.Title, isAudio, i+1, len(filesToSend))
-		if filePath != tempFileName {
-			os.Remove(filePath)
-		}
-	}
-
-	react(client, v, "✅")
+	// 🔄 Railway API band hai — seedha yt-dlp use karo
+	fmt.Printf("🔄 Railway API unavailable — going directly to yt-dlp...\n")
+	executeFallback()
 }
 
 

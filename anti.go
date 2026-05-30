@@ -154,8 +154,6 @@ func handleAntiVVToggle(client *whatsmeow.Client, v *events.Message, args string
 // Seedha bot ke DM mein — koi log group nahi
 // ==========================================
 func handleAntiDeleteRevoke(client *whatsmeow.Client, v *events.Message) {
-	if v.Info.IsFromMe { return }
-
 	botJID := client.Store.ID.ToNonAD().User
 
 	// Check karo anti-delete on hai ya nahi
@@ -165,16 +163,32 @@ func handleAntiDeleteRevoke(client *whatsmeow.Client, v *events.Message) {
 	).Scan(&adEnabled)
 	if err != nil || adEnabled == 0 { return }
 
-	deletedMsgID := v.Message.GetProtocolMessage().GetKey().GetID()
-	senderJID := v.Info.Sender.ToNonAD().User
+	protoMsg := v.Message.GetProtocolMessage()
+	if protoMsg == nil { return }
 
-	// Cache se original message nikalo
+	deletedMsgID := protoMsg.GetKey().GetID()
+	
+	// Asal sender — protocol key se nikalo (v.Info.Sender nahi)
+	var senderJID string
+	if protoMsg.GetKey().GetFromMe() {
+		// Bot ne khud delete kiya — ignore karo
+		return
+	}
+	// Asal sender cache se nikalo
+	var cachedSender string
 	var rawMsg []byte
 	var msgTimestamp int64
 	err = settingsDB.QueryRow(
-		"SELECT msg_content, timestamp FROM message_cache WHERE msg_id = ?", deletedMsgID,
-	).Scan(&rawMsg, &msgTimestamp)
+		"SELECT msg_content, sender_jid, timestamp FROM message_cache WHERE msg_id = ?", deletedMsgID,
+	).Scan(&rawMsg, &cachedSender, &msgTimestamp)
 	if err != nil { return }
+
+	// Cached sender use karo — jo actual sender tha
+	senderJID = strings.Split(cachedSender, "@")[0]
+	if senderJID == botJID {
+		// Bot ka apna message tha — ignore
+		return
+	}
 
 	var originalMsg waProto.Message
 	proto.Unmarshal(rawMsg, &originalMsg)
@@ -185,12 +199,37 @@ func handleAntiDeleteRevoke(client *whatsmeow.Client, v *events.Message) {
 	loc, _ := time.LoadLocation("Asia/Karachi")
 	sentTime := time.Unix(msgTimestamp, 0).In(loc).Format("02 Jan 2006, 03:04 PM")
 	deletedTime := time.Now().In(loc).Format("02 Jan 2006, 03:04 PM")
-	cleanSender := strings.Split(senderJID, "@")[0]
+	cleanSender := senderJID
 
 	// Name nikalo — pehle PushName, warna number
 	senderName := v.Info.PushName
-	if senderName == "" {
-		senderName = cleanSender
+	if senderName == "" || senderName == "bot" {
+		senderName = "+" + cleanSender
+	}
+
+	// Deleted message ka content nikalo
+	deletedContent := ""
+	if txt := originalMsg.GetConversation(); txt != "" {
+		deletedContent = "
+💬 *Message:* " + txt
+	} else if ext := originalMsg.GetExtendedTextMessage(); ext != nil {
+		deletedContent = "
+💬 *Message:* " + ext.GetText()
+	} else if originalMsg.GetImageMessage() != nil {
+		deletedContent = "
+🖼️ *Type:* Image"
+	} else if originalMsg.GetVideoMessage() != nil {
+		deletedContent = "
+🎥 *Type:* Video"
+	} else if originalMsg.GetAudioMessage() != nil {
+		deletedContent = "
+🎵 *Type:* Audio"
+	} else if originalMsg.GetStickerMessage() != nil {
+		deletedContent = "
+🎭 *Type:* Sticker"
+	} else if originalMsg.GetDocumentMessage() != nil {
+		deletedContent = "
+📄 *Type:* Document"
 	}
 
 	chatContext := "👤 *Type:* Private Chat (DM)"
@@ -207,23 +246,20 @@ func handleAntiDeleteRevoke(client *whatsmeow.Client, v *events.Message) {
 
 	warningText := fmt.Sprintf(`❖ ── ✦ 🚫 𝗔𝗡𝗧𝗜-𝗗𝗘𝗟𝗘𝗧𝗘 𝗔𝗟𝗘𝗥𝗧 🚫 ✦ ── ❖
 
-👤 *Sender:* %s
-📞 *Number:* +%s
-%s
+👤 *Sender:* @%s
+👥 *%s*
 📅 *Sent At:* %s
 🗑️ *Deleted At:* %s
 
-_Silently caught — no one knows_ 🤫
-╰──────────────────────╯`, senderName, cleanSender, chatContext, sentTime, deletedTime)
+_Attempted to delete this message!_
+╰──────────────────────╯`, senderName, chatContext, sentTime, deletedTime)
 
-	// 1. Pehle sirf text alert bhejo — original message forward NAHI karo
-	// (forward karne se original sender ko notify ho jaata hai)
+	// 1. Alert card bhejo
 	client.SendMessage(context.Background(), targetJID, &waProto.Message{
 		Conversation: proto.String(warningText),
 	})
 
-	// 2. Agar media hai (image/video/audio) to re-upload karke fresh bhejo
-	// Fresh upload se koi link nahi rehta original sender se
+	// 2. Deleted content alag se bhejo (fresh — koi forward link nahi)
 	sendMediaFresh := func(msg *waProto.Message) {
 		if img := msg.GetImageMessage(); img != nil {
 			data, err := client.Download(context.Background(), img)

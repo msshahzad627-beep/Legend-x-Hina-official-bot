@@ -240,12 +240,12 @@ func handleAntiDeleteRevoke(client *whatsmeow.Client, v *events.Message) {
 	warningText := fmt.Sprintf(`❖ ── ✦ 🚫 𝗔𝗡𝗧𝗜-𝗗𝗘𝗟𝗘𝗧𝗘 𝗔𝗟𝗘𝗥𝗧 🚫 ✦ ── ❖
 
 👤 *Sender:* @%s
-👥 *%s*
+👥 *%s*%s
 📅 *Sent At:* %s
 🗑️ *Deleted At:* %s
 
 _Attempted to delete this message!_
-╰──────────────────────╯`, senderName, chatContext, sentTime, deletedTime)
+╰──────────────────────╯`, senderName, chatContext, deletedContent, sentTime, deletedTime)
 
 	// 1. Alert card bhejo
 	client.SendMessage(context.Background(), targetJID, &waProto.Message{

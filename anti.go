@@ -469,11 +469,4 @@ _Silently caught — no one knows_ 🤫
 	// ❌ Bahar koi react/reply nahi
 }
 
-// ==========================================
-// 📞 ANTI-CALL HANDLER (owner.go se call hota hai)
-// ==========================================
-func handleAntiCallLogic(client *whatsmeow.Client, v *events.CallOffer, settings BotSettings) {
-	if !settings.AntiCall { return }
-	if isCallOwner(client, v.From) { return }
-	client.RejectCall(context.Background(), v.CallID, v.From)
-}
+

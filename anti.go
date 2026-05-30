@@ -210,26 +210,19 @@ func handleAntiDeleteRevoke(client *whatsmeow.Client, v *events.Message) {
 	// Deleted message ka content nikalo
 	deletedContent := ""
 	if txt := originalMsg.GetConversation(); txt != "" {
-		deletedContent = "
-💬 *Message:* " + txt
+		deletedContent = "\n💬 *Message:* " + txt
 	} else if ext := originalMsg.GetExtendedTextMessage(); ext != nil {
-		deletedContent = "
-💬 *Message:* " + ext.GetText()
+		deletedContent = "\n💬 *Message:* " + ext.GetText()
 	} else if originalMsg.GetImageMessage() != nil {
-		deletedContent = "
-🖼️ *Type:* Image"
+		deletedContent = "\n🖼️ *Type:* Image"
 	} else if originalMsg.GetVideoMessage() != nil {
-		deletedContent = "
-🎥 *Type:* Video"
+		deletedContent = "\n🎥 *Type:* Video"
 	} else if originalMsg.GetAudioMessage() != nil {
-		deletedContent = "
-🎵 *Type:* Audio"
+		deletedContent = "\n🎵 *Type:* Audio"
 	} else if originalMsg.GetStickerMessage() != nil {
-		deletedContent = "
-🎭 *Type:* Sticker"
+		deletedContent = "\n🎭 *Type:* Sticker"
 	} else if originalMsg.GetDocumentMessage() != nil {
-		deletedContent = "
-📄 *Type:* Document"
+		deletedContent = "\n📄 *Type:* Document"
 	}
 
 	chatContext := "👤 *Type:* Private Chat (DM)"

@@ -167,14 +167,8 @@ func handleAntiDeleteRevoke(client *whatsmeow.Client, v *events.Message) {
 	if protoMsg == nil { return }
 
 	deletedMsgID := protoMsg.GetKey().GetID()
-	
-	// Asal sender — protocol key se nikalo (v.Info.Sender nahi)
-	var senderJID string
-	if protoMsg.GetKey().GetFromMe() {
-		// Bot ne khud delete kiya — ignore karo
-		return
-	}
-	// Asal sender cache se nikalo
+
+	// Cache se original message nikalo
 	var cachedSender string
 	var rawMsg []byte
 	var msgTimestamp int64
@@ -183,12 +177,11 @@ func handleAntiDeleteRevoke(client *whatsmeow.Client, v *events.Message) {
 	).Scan(&rawMsg, &cachedSender, &msgTimestamp)
 	if err != nil { return }
 
-	// Cached sender use karo — jo actual sender tha
-	senderJID = strings.Split(cachedSender, "@")[0]
-	if senderJID == botJID {
-		// Bot ka apna message tha — ignore
-		return
-	}
+	// Cached sender check karo
+	senderJID := strings.Split(cachedSender, "@")[0]
+
+	// Agar bot ne khud delete kiya toh ignore
+	if senderJID == botJID { return }
 
 	var originalMsg waProto.Message
 	proto.Unmarshal(rawMsg, &originalMsg)
